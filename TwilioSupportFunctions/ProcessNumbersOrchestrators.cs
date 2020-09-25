@@ -1,26 +1,24 @@
-﻿using Microsoft.Azure.WebJobs;
+﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Extensions.Logging;
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Twilio.Rest.Api.V2010.Account;
-using Twilio.Types;
 
 namespace TwilioSupportFunctions
 {
     public static class ProcessNumbersOrchestrators
     {
         [FunctionName("O_CallSupport")]
-        public static async Task<string> CallSupport([OrchestrationTrigger] IDurableOrchestrationContext context, ILogger log)
+        public static async Task<IActionResult> CallSupport([OrchestrationTrigger] IDurableOrchestrationContext context, ILogger log)
         {
-            var waitBetweenTries = TimeSpan.FromSeconds(100); // 3 tries in 5 minutes
-            var phoneNumbers = await context.CallActivityAsync<string[]>("A_GetNumbersFromStorage", null);
-            var callTime = context.CurrentUtcDateTime;
-
             try
-            {
+            { 
+                var waitBetweenTries = TimeSpan.FromSeconds(100); // 3 tries in 5 minutes
+                var phoneNumbers = await context.CallActivityAsync<string[]>("A_GetNumbersFromStorage", null);
+                var callTime = context.CurrentUtcDateTime;
+
                 foreach (var phoneNumber in phoneNumbers)
                 {
                     CallInfo callinfo = new CallInfo
@@ -45,10 +43,28 @@ namespace TwilioSupportFunctions
                             {
                                 timeoutCts.Cancel();
                                 var twilioResult = twilioCallbackTask.Result;
-                                if (twilioResult == "answered")
+
+                                log.LogWarning($"twilioResult = {twilioResult}");
+
+                                if (twilioResult == "in-progress")
                                 {
-                                    log.LogWarning($"Call Answered by {phoneNumber} at {context.CurrentUtcDateTime}");
-                                    return phoneNumber;
+                                    log.LogWarning($"Call was in-progress by {phoneNumber} at {context.CurrentUtcDateTime}");
+                                    return new OkObjectResult("was in-progress");
+                                }
+                                else if (twilioResult == "completed")
+                                {
+                                    log.LogWarning($"Call was completed by {phoneNumber} at {context.CurrentUtcDateTime}");
+                                    //return new OkObjectResult("was completed");
+                                }
+                                else if (twilioResult == "answered")
+                                {
+                                    log.LogWarning($"Call was answered by {phoneNumber} at {context.CurrentUtcDateTime}");
+                                    return new OkObjectResult("was answered");
+                                }
+                                else
+                                {
+                                    log.LogWarning($"Result was  {twilioResult} at {context.CurrentUtcDateTime}");
+                                    log.LogWarning($"Call Wasnt answered by {phoneNumber} at {context.CurrentUtcDateTime}");
                                 }
                             }
                         }
@@ -62,12 +78,14 @@ namespace TwilioSupportFunctions
                     }
                 }
 
-                return null;
+                // save message in queue then start again
+
+                return new OkObjectResult($"Finished calling all of the numbers at at {context.CurrentUtcDateTime} and no one picked up.");
             }
             catch (Exception e)
             {
                 log.LogWarning(e.Message);
-                return null;
+                return new BadRequestResult();
             }
         }
     }

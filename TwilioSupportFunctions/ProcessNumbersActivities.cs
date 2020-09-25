@@ -1,7 +1,10 @@
-﻿using Microsoft.Azure.Storage;
+﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Azure.Storage;
 using Microsoft.Azure.Storage.Blob;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
+using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -72,21 +75,51 @@ namespace TwilioSupportFunctions
 
             log.LogWarning($"InstanceId {callInfo.InstanceId}");
 
-            var statusCallbackUri = new Uri(string.Format(Environment.GetEnvironmentVariable("statusCallBackUrl"), callInfo.InstanceId));
+            var statusCallbackUri = string.Format(Environment.GetEnvironmentVariable("statusCallBackUrl"), callInfo.InstanceId);
 
             log.LogWarning($"statusCallbackUri {statusCallbackUri}");
 
-            var statusCallbackEvent = new List<string> { "answered" };
-
+            var mystatusCallbackEvent = new List<string> { "initiated", "ringing", "answered", "completed" };
+            
             log.LogWarning($"About to make a call to  {to} from {from}.");
 
+            var callbackURI = string.Format(statusCallbackUri, callInfo.InstanceId);
+
+            log.LogWarning($"callbackURI = {callbackURI}");
+
+            log.LogWarning($"asyncAmdStatusCallback = {callbackURI}");
+
             var call = CallResource.Create(
-                to,
-                from,
-                url: new Uri("http://demo.twilio.com/docs/voice.xml"),
-                statusCallback: statusCallbackUri,
-                statusCallbackMethod: Twilio.Http.HttpMethod.Post,
-                statusCallbackEvent: statusCallbackEvent);
+               to,
+               from,
+               url: new Uri("http://demo.twilio.com/docs/voice.xml"),
+               statusCallback: new Uri(callbackURI),
+               statusCallbackMethod: Twilio.Http.HttpMethod.Post,
+               statusCallbackEvent: mystatusCallbackEvent);
+
+
+            #region Other attempts
+
+            //var call = CallResource.Create(
+            //    to,
+            //    from,
+            //    url: new Uri("http://demo.twilio.com/docs/voice.xml"),
+            //    statusCallback: new Uri(callbackURI),
+            //    statusCallbackMethod: Twilio.Http.HttpMethod.Post,
+            //    statusCallbackEvent: statusCallbackEvent,
+            //    machineDetection: "Enable",
+            //    method: Twilio.Http.HttpMethod.Get);
+
+
+            //var call = CallResource.Create(
+            //  to,
+            //  from,
+            //  //url: new Uri("http://demo.twilio.com/docs/voice.xml"),
+            //  url: new Uri("https://handler.twilio.com/twiml/EH8ccdbd7f0b8fe34357da8ce87ebe5a16"),
+            //  machineDetection: "Enable",
+            //  asyncAmdStatusCallback: new Uri(callbackURI),
+            //  asyncAmdStatusCallbackMethod: Twilio.Http.HttpMethod.Post);
+            #endregion
 
             return madeCallId;
         }
